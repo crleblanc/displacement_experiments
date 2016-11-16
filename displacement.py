@@ -83,14 +83,12 @@ def main():
 
     for fname in args.filenames:
         dframe = read_file(fname, cols, skiprows)
-        print dframe
         disp = get_displacement(dframe, cols, args.clusters)
 
         title = 'File: %s, displacement(s) for' % fname
         for i, event in enumerate(disp):
            title += (' event %d :%s=%.2f %s=%.2f %s=%.2f' % (i+1, cols[0], event[0], cols[1], event[1], cols[2], event[2]))
 
-        print dframe
         dframe.plot(title=title)
 
     plt.show()
