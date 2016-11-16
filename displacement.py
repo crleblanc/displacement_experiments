@@ -36,9 +36,9 @@ def get_displacement(dframe, columns, n):
     cluster_times = []
 
     # get a list of min/max times of clusters so we can sort them by time, this will give us relative displacement by time
-    for i, centers in enumerate(km.cluster_centers_):
+    for cent, centers in enumerate(km.cluster_centers_):
 
-        times = dframe.index[dframe['cluster_id'] == i]
+        times = dframe.index[dframe['cluster_id'] == cent]
         cluster_times.append(times.mean())
 
         # record the mean value of the cluster for each component in the output dataframe
