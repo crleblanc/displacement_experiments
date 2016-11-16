@@ -10,12 +10,17 @@ from sklearn.cluster import KMeans
 
 parser = argparse.ArgumentParser(description='Find displacements in 3 dimensions in input GPS records')
 parser.add_argument('filenames', type=str, nargs='+', help='One or more input files to process')
-parser.add_argument('--c', dest='clusters', type=int, default=2,
+parser.add_argument('-c', '--clusters', dest='clusters', type=int, default=2,
                     help='The number of clusters to find. Usually 2, a cluster before and after the quake')
+parser.add_argument('-f', dest='format', type=str, default='LC', choices=['LC', 'reformatted'],
+                    help='Use either the LC format (default) or reformatted')
 
-def read_file(fname, cols):
-    data = pd.read_csv(fname, delim_whitespace=True, usecols=cols)
-    data = data.set_index('sec-past-eq')
+def read_file(fname, cols, skiprows):
+    data = pd.read_csv(fname, delim_whitespace=True, usecols=cols, skiprows=skiprows)
+    # drop any junk, eg: the second header line
+    data = data.dropna()
+    # using a normal integer index starting from 0
+    data = data.reset_index(drop=True)
     return data
 
 def get_displacement(dframe, columns, n):
@@ -36,14 +41,14 @@ def get_displacement(dframe, columns, n):
     cluster_times = []
 
     # get a list of min/max times of clusters so we can sort them by time, this will give us relative displacement by time
-    for cent, centers in enumerate(km.cluster_centers_):
+    for cent_idx, centers in enumerate(km.cluster_centers_):
 
-        times = dframe.index[dframe['cluster_id'] == cent]
+        times = dframe.index[dframe['cluster_id'] == cent_idx]
         cluster_times.append(times.mean())
 
         # record the mean value of the cluster for each component in the output dataframe
-        for i, col_name in enumerate(mean_columns):
-            dframe[col_name][times] = centers[i]
+        for col_idx, col_name in enumerate(mean_columns):
+            dframe[col_name][times] = centers[col_idx]
 
 
     # record the relative displacement
@@ -67,18 +72,25 @@ def get_displacement(dframe, columns, n):
 def main():
     args = parser.parse_args()
 
-    # columns in the input file to parse
-    cols = ['sec-past-eq', 'n(cm)', 'e(cm)', 'u(cm)']
+    # columns in the input file to parse.  LC is the unformatted full version
+    if args.format == 'LC':
+        cols = ['dNorth', 'dEast', 'dHeight']
+        skiprows = [1]
+    else:
+        cols = ['n(cm)', 'e(cm)', 'u(cm)']
+        skiprows = None
+
 
     for fname in args.filenames:
-        components = cols[1:]
-        dframe = read_file(fname, cols)
-        disp = get_displacement(dframe, components, args.clusters)
+        dframe = read_file(fname, cols, skiprows)
+        print dframe
+        disp = get_displacement(dframe, cols, args.clusters)
 
         title = 'File: %s, displacement(s) for' % fname
         for i, event in enumerate(disp):
-            title += (' event %d :%s=%.2f %s=%.2f %s=%.2f' % (i+1, components[0], event[0], components[1], event[1], components[2], event[2]))
+           title += (' event %d :%s=%.2f %s=%.2f %s=%.2f' % (i+1, cols[0], event[0], cols[1], event[1], cols[2], event[2]))
 
+        print dframe
         dframe.plot(title=title)
 
     plt.show()
