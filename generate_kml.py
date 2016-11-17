@@ -9,7 +9,7 @@ from pykml.parser import Schema
 from pykml.factory import KML_ElementMaker as KML
 from pykml.factory import GX_ElementMaker as GX
 
-# TODO: create a new IconStyle for each station.  Use AnimatedUpdate to update each station.  Updates seem to happen concurrently
+# TODO: create a new IconStyle for each station (append?).  Use AnimatedUpdate to update each station.  Updates seem to happen concurrently
 # Yes they do, so loop over all stations and apply updates.  Duration should be equal to actual duration
 
 doc = KML.kml(
@@ -26,14 +26,18 @@ doc = KML.kml(
             id="pushpin"
         ),
         KML.Style(
-            KML.IconStyle(
-                KML.scale(1.0),
-                KML.Icon(
-                    KML.href("http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png"),
-                ),
-                id="mystyle2"
+            # KML.IconStyle(
+            #     KML.scale(1.0),
+            #     KML.Icon(
+            #         KML.href("http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png"),
+            #     ),
+            #     id="linestyle"
+            # ),
+            KML.LineStyle(
+                KML.color('#FF0000'),
+                KML.width(50),
             ),
-            id="pushpin2"
+            id="gpsvector"
         ),
         KML.Placemark(
             KML.name("Pin on a mountaintop"),
@@ -44,12 +48,19 @@ doc = KML.kml(
             id="mountainpin1"
         ),
         KML.Placemark(
-            KML.name("Pin2 on a mountaintop"),
-            KML.styleUrl("#pushpin2"),
-            KML.Point(
-                KML.coordinates("170.1440558771009,-43.60535741890396,0")
+            KML.name("Line on a mountaintop"),
+            # KML.styleUrl("#gpsvector"),
+            KML.LineStyle(
+                KML.color('#FF0000'),
+                KML.width(10000)
             ),
-            id="mountainpin2"
+            KML.LineString(
+                # KML.extrude('1'), #??
+                KML.tessellate('1'),
+                KML.altitudeMode('relativeToGround'),
+                KML.coordinates("170.13,-43.63,5000 170.15,-43.50,5000")
+            ),
+            id="mountainline"
         ),
         GX.Tour(
             KML.name("Play me!"),
@@ -86,8 +97,8 @@ doc = KML.kml(
                         KML.targetHref(),
                         KML.Change(
                             KML.IconStyle(
-                                KML.scale(0.3),
-                                targetId="mystyle2"
+                                KML.scale(5.0),
+                                targetId="vector"
                             )
                         )
                     )

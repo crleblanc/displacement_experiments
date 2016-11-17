@@ -2,14 +2,14 @@
 
 from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
-from stations import getStationCoords
+from stations import station_coords
 
 # Attempt to animate the GPS tensors in time to visualise the earthquake deformation
 
 
 def main():
 
-    stationInfo = getStationCoords()
+    stationInfo = station_coords()
     #print stationInfo
 
     # TODO: use matplotlib to start off with (slow) and animate it over every row in the data, making a map for horizontal and vertical diffs
