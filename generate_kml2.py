@@ -1,7 +1,10 @@
 #!/usr/bin/env python
-"""Second attempt at writing KML for earthquake displacement.  Using simplekml which will hopefully be, well, simpler"""
+"""Writing a Google Earth KML file for earthquake displacement animation.  Each 10Hz GPS file represents
+measurements at a unique station.  All displacements are plotted as lines that change orientation and length
+with the X/Y/Z displacement"""
 
 from glob import glob
+import pandas as pd
 import simplekml
 from stations import station_coords
 from displacement import read_file
@@ -15,25 +18,23 @@ def absoluteChange(orig, delta):
 def main():
     kml = simplekml.Kml(name='GPS Sensor displacement for Kaikoura Earthquake 14 Nov 2016', open=1)
 
-    samp_rate = 0.1 # duration between samples
-    freq = 1.0/samp_rate
-    hscale = 0.01 # horizontal scaling factor to multiply displacement by
-    vector_evel = 1000
-    cols = ['dNorth', 'dEast', 'dHeight']
+
+    # TODO: set at 10 for actual speed
+    freq = 100.0 # frequency in Hz to play back.
+    samp_rate = 1.0/freq # Google Earth wants duration (sample rate) between measurements
+    hscale = 0.001 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, need to change!
+    vector_evel = 50
+    cols = ['sec-past-eq', 'n(cm)', 'e(cm)', 'u(cm)']
     skiprows = [1]
-    # if args.format == 'LC':
-    #     cols = ['dNorth', 'dEast', 'dHeight']
-    #     skiprows = [1]
-    # else:
-    #     cols = ['n(cm)', 'e(cm)', 'u(cm)']
-    #     skiprows = None
 
-
-    filenames = glob('*.LC')
+    filenames = glob('*.reformat')
     station_info = station_coords()
 
     horiz_anim = kml.newgxtour(name="Play horizontal displacement animation")
     horiz_playlist = horiz_anim.newgxplaylist()
+
+    datasets = {} # store all dataframes in this dict, station_id:data.
+    allData = pd.DataFrame()
 
     for filename in filenames:
         print filename
@@ -41,14 +42,17 @@ def main():
 
         # get the data for this station name as a Pandas dataframe
         data = read_file(filename, cols, skiprows)
+        data.set_index('sec-past-eq')
 
         # normalise the data so we're starting at 0.  Could be smarter and average this over a certain time period...
         data = data - data.iloc[0]
+        data['n(cm)'] *= hscale
+        data['e(cm)'] *= hscale
 
         # # Add a point with a label for the GPS station
         station_lonlat = [float(station_info[station]['lon']), float(station_info[station]['lat']), vector_evel]
         station_pt = kml.newpoint(name=station, coords=[station_lonlat])
-        station_pt.style.iconstyle.scale = 1.0
+        station_pt.style.iconstyle.scale = 0.3
         station_pt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/paddle/red-stars-lv.png'
 
         # Add a zero length line for horizontal displacement, which will be modified later to make the animation
@@ -58,49 +62,26 @@ def main():
         hvect.style.linestyle.color = simplekml.Color.white
         hvect.altitudemode = simplekml.AltitudeMode.relativetoground
 
-        data[cols[0]] *= hscale
-        data[cols[1]] *= hscale
+        # save the dataframe for concatenation later
+        datasets[station] = data
 
         for idx, row in data.iterrows():
+            # coords need to be in lon, lat, elev
+            delta = row[['e(cm)', 'n(cm)', 'u(cm)']]
 
-            delta = (row[0], row[1], 0) # fix the elevation for this display, just horizontals.
-            # delta = [x for x in row]
-            # print station_lonlat
-            # print delta
-            # print kmlCoords(station_lonlat)
-            # print absoluteChange(station_lonlat, delta)
-            # print '--'
+            # end point for vector should be at same elev at start
+            delta['u(cm)'] = 0
 
-            animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=freq)
+            animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
             updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            animatedupdate.update.change = updateStr.format(hvect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, row))
+            animatedupdate.update.change = updateStr.format(hvect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
 
-            wait = horiz_playlist.newgxwait(gxduration=freq)
-
-        # ln = kml.newlinestring(name='A LineString')
-        # ln.coords = [station_lonlat, [173.533658856, -42.52546696906044, 0]]
-        # ln.style.linestyle.width = 10
-        # ln.style.linestyle.color = simplekml.Color.red
-        # ln.altitudemode = simplekml.AltitudeMode.relativetoground
-        #
-        # tour = kml.newgxtour(name="Play displacement animation")
-        # playlist = tour.newgxplaylist()
-        #
-        # for i, delta in enumerate([[0, 10, 0], [0, 100, 0], [0, 10, 0], [0, -10, 0]]):
-        #
-        #     animatedupdate = playlist.newgxanimatedupdate(gxduration=0.2)
-        #     updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-        #     print station_lonlat
-        #     print delta
-        #     print kmlCoords(station_lonlat)
-        #     print absoluteChange(station_lonlat, delta)
-        #     print '--'
-        #     animatedupdate.update.change = updateStr.format(ln.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
-        #
-        #     wait = playlist.newgxwait(gxduration=0.2)
+            wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
 
-        wait = horiz_playlist.newgxwait(gxduration=freq)
+        wait = horiz_playlist.newgxwait(gxduration=samp_rate)
+
+        break
 
     kml.save("test.kml")
 
