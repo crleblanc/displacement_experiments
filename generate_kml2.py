@@ -5,6 +5,7 @@ with the X/Y/Z displacement"""
 
 from glob import glob
 import pandas as pd
+from collections import OrderedDict
 import simplekml
 from stations import station_coords
 from displacement import read_file
@@ -28,16 +29,17 @@ def main():
     skiprows = [1]
 
     filenames = glob('*.reformat')
+    # filenames = ['10hz-318.DHU.hanm.LC.reformat', '10hz-318.DHU.kaik.LC.reformat']
     station_info = station_coords()
 
     horiz_anim = kml.newgxtour(name="Play horizontal displacement animation")
     horiz_playlist = horiz_anim.newgxplaylist()
 
-    datasets = {} # store all dataframes in this dict, station_id:data.
-    allData = pd.DataFrame()
+    datasets = OrderedDict() # store all dataframes in this dict, station_id:data.
+    hvects = OrderedDict() # store all vector objects to be updated later
 
     for filename in filenames:
-        print filename
+        # print filename
         station = filename.split('.')[2].upper()
 
         # get the data for this station name as a Pandas dataframe
@@ -45,9 +47,9 @@ def main():
         data.set_index('sec-past-eq')
 
         # normalise the data so we're starting at 0.  Could be smarter and average this over a certain time period...
-        data = data - data.iloc[0]
-        data['n(cm)'] *= hscale
-        data['e(cm)'] *= hscale
+        # data = data - data.iloc[0]
+        data['n(cm)'][:] = (data['n(cm)'] - data['n(cm)'][0]) * hscale
+        data['e(cm)'][:] = (data['e(cm)'] - data['e(cm)'][0]) * hscale
 
         # # Add a point with a label for the GPS station
         station_lonlat = [float(station_info[station]['lon']), float(station_info[station]['lat']), vector_evel]
@@ -64,26 +66,59 @@ def main():
 
         # save the dataframe for concatenation later
         datasets[station] = data
+        hvects[station] = hvect
 
-        for idx, row in data.iterrows():
+    # contact and sort all the data based on time.  Avoids joining and filling gaps.  The data appear to have the same time
+    # samples anyway but this handles both cases
+    allData = pd.concat(datasets.values(), keys=datasets.keys())
+    allData = allData.swaplevel(0, 1).sort('sec-past-eq')
+
+    # iterate over all the indicies (with corresponding times), then iterate over station names and add a wait in between each timestep.
+    for idx in allData.index.levels[0]:
+        # for idx in indexes:
+        timestep = allData.loc[idx]
+        for station_name, row in timestep.iterrows():
             # coords need to be in lon, lat, elev
-            delta = row[['e(cm)', 'n(cm)', 'u(cm)']]
+            delta = row.loc[['e(cm)', 'n(cm)', 'u(cm)']]
 
-            # end point for vector should be at same elev at start
+            # end point for vector should be at same elev at start.  TODO: handle this differently...
             delta['u(cm)'] = 0
 
+            # station_name = indexes[1]
+            station_lonlat = [float(station_info[station_name]['lon']), float(station_info[station_name]['lat']), vector_evel]
+            vect = hvects[station_name]
             animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
             updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            animatedupdate.update.change = updateStr.format(hvect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
-
-            wait = horiz_playlist.newgxwait(gxduration=samp_rate)
-
+            animatedupdate.update.change = updateStr.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
 
         wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
-        break
+
+    wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
     kml.save("test.kml")
+
+
+    #     print index, station_name
+    # for indexes, row in allData.iterrows():
+    #     # coords need to be in lon, lat, elev
+    #     delta = row[['e(cm)', 'n(cm)', 'u(cm)']]
+    #
+    #     # end point for vector should be at same elev at start
+    #     delta['u(cm)'] = 0
+    #
+    #     station_name = indexes[1]
+    #     vect = hvects[station_name]
+    #     animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
+    #     updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
+    #     animatedupdate.update.change = updateStr.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
+    #
+    #     wait = horiz_playlist.newgxwait(gxduration=samp_rate)
+    #
+    #
+    # wait = horiz_playlist.newgxwait(gxduration=samp_rate)
+    #
+    # kml.save("test.kml")
 
 
 if __name__ == '__main__':
