@@ -75,6 +75,9 @@ def main():
 
     # iterate over all the indicies (with corresponding times), then iterate over station names and add a wait in between each timestep.
     for idx in allData.index.levels[0]:
+
+        changes = []
+
         # for idx in indexes:
         timestep = allData.loc[idx]
         for station_name, row in timestep.iterrows():
@@ -87,9 +90,11 @@ def main():
             # station_name = indexes[1]
             station_lonlat = [float(station_info[station_name]['lon']), float(station_info[station_name]['lat']), vector_evel]
             vect = hvects[station_name]
-            animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
-            updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            animatedupdate.update.change = updateStr.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
+            update_str = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
+            changes.append(update_str.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta)))
+
+        animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
+        animatedupdate.update.change = ''.join(changes)
 
         wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
@@ -97,29 +102,6 @@ def main():
     wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
     kml.save("test.kml")
-
-
-    #     print index, station_name
-    # for indexes, row in allData.iterrows():
-    #     # coords need to be in lon, lat, elev
-    #     delta = row[['e(cm)', 'n(cm)', 'u(cm)']]
-    #
-    #     # end point for vector should be at same elev at start
-    #     delta['u(cm)'] = 0
-    #
-    #     station_name = indexes[1]
-    #     vect = hvects[station_name]
-    #     animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
-    #     updateStr = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-    #     animatedupdate.update.change = updateStr.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta))
-    #
-    #     wait = horiz_playlist.newgxwait(gxduration=samp_rate)
-    #
-    #
-    # wait = horiz_playlist.newgxwait(gxduration=samp_rate)
-    #
-    # kml.save("test.kml")
-
 
 if __name__ == '__main__':
     main()
