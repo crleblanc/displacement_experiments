@@ -44,7 +44,7 @@ def get_displacement(dframe, columns, n):
     for cent_idx, centers in enumerate(km.cluster_centers_):
 
         times = dframe.index[dframe['cluster_id'] == cent_idx]
-        cluster_times.append(times.mean())
+        cluster_times.append(times.values.mean())
 
         # record the mean value of the cluster for each component in the output dataframe
         for col_idx, col_name in enumerate(mean_columns):
