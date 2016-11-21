@@ -21,9 +21,9 @@ def main():
 
 
     # TODO: set at 10 for actual speed
-    freq = 100.0 # frequency in Hz to play back.
+    freq = 10.0 # frequency in Hz to play back.
     samp_rate = 1.0/freq # Google Earth wants duration (sample rate) between measurements
-    hscale = 0.001 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, need to change!
+    hscale = 0.003 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, need to change!
     vector_evel = 50
     cols = ['sec-past-eq', 'n(cm)', 'e(cm)', 'u(cm)']
     skiprows = [1]
