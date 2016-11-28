@@ -9,20 +9,27 @@ from collections import OrderedDict
 import simplekml
 from stations import station_coords
 from displacement import read_file
+from pyproj import Proj
 
 def kmlCoords(coords):
     return ','.join([str(x) for x in coords])
 
-def absoluteChange(orig, delta):
-    return ','.join([str(x+y) for x, y in zip(orig, delta)])
+def addDistanceToCoords(coords, lengths):
+    """Return a comma delimted string of 'lon,lat,elev' with the distances (m) in the lengths argument added to the (lon,lat,elev) coordinates in coords"""
+    p = Proj(proj='utm',zone='59G',ellps='WGS84')
+    x,y = p(coords[0], coords[1])
+    lon, lat = p(x + lengths[0], y + lengths[1], inverse=True)
+    new_coords = [str(lon), str(lat), str(coords[2])]
+
+    return ','.join(new_coords)
 
 def main():
     kml = simplekml.Kml(name='GPS Sensor displacement for Kaikoura Earthquake 14 Nov 2016', open=1)
 
     freq = 1.0 # frequency in Hz to play back.
     samp_rate = 1.0/freq # Google Earth wants duration (sample rate) between measurements
-    hscale = 0.0003 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, TODO: need to change!
-    vscale = 0.0003 # vertical scaling factor to multiply displacement by.  Currently lat which makes no sense.
+    hscale = 50.0 # horizontal scaling factor to multiply displacement by
+    vscale = 50.0 # vertical scaling factor to multiply displacement by
     vector_evel = 200
     # cols = ['sec-past-eq', 'dNorth', 'dEast', 'u(cm)']
     # skiprows = [1]
@@ -32,7 +39,7 @@ def main():
     filenames = glob('*.LC')
     station_info = station_coords()
 
-    horiz_anim = kml.newgxtour(name="Play horizontal displacement animation")
+    horiz_anim = kml.newgxtour(name="Play timeline")
     horiz_playlist = horiz_anim.newgxplaylist()
 
     datasets = OrderedDict() # store all dataframes in this dict, station_id:data.
@@ -102,13 +109,13 @@ def main():
             station_kml_coords = kmlCoords(station_lonlat)
             h_vect = hvects[station_name]
             h_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            changes.append(h_update.format(h_vect.id, station_kml_coords, absoluteChange(station_lonlat, h_delta)))
+            changes.append(h_update.format(h_vect.id, station_kml_coords, addDistanceToCoords(station_lonlat, h_delta)))
 
             # update the vertical vector TODO: if negative make it blue
             v_vect = vvects[station_name]
             v_delta = [0, row.loc[cols[2]], 0]
             v_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            changes.append(v_update.format(v_vect.id, station_kml_coords, absoluteChange(station_lonlat, v_delta)))
+            changes.append(v_update.format(v_vect.id, station_kml_coords, addDistanceToCoords(station_lonlat, v_delta)))
 
             if v_delta[1] < 0:
                 colour = 'ffff0000' # blue
@@ -116,6 +123,8 @@ def main():
                 colour = 'ff0000ff' # red
 
             changes.append('<LineStyle targetId="%s"><color>%s</color></LineStyle>' % (v_vect.style.linestyle.id, colour))
+
+        # if idx == 3: return
 
         animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
         animatedupdate.update.change = ''.join(changes)
