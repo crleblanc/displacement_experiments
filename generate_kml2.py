@@ -19,24 +19,25 @@ def absoluteChange(orig, delta):
 def main():
     kml = simplekml.Kml(name='GPS Sensor displacement for Kaikoura Earthquake 14 Nov 2016', open=1)
 
-
-    # TODO: set at 10 for actual speed
-    freq = 10.0 # frequency in Hz to play back.
+    freq = 1.0 # frequency in Hz to play back.
     samp_rate = 1.0/freq # Google Earth wants duration (sample rate) between measurements
-    hscale = 0.003 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, need to change!
-    vector_evel = 50
-    cols = ['sec-past-eq', 'n(cm)', 'e(cm)', 'u(cm)']
+    hscale = 0.0003 # horizontal scaling factor to multiply displacement by.  Current in Lat/lon which makes no sense, TODO: need to change!
+    vscale = 0.0003 # vertical scaling factor to multiply displacement by.  Currently lat which makes no sense.
+    vector_evel = 200
+    # cols = ['sec-past-eq', 'dNorth', 'dEast', 'u(cm)']
+    # skiprows = [1]
+    cols = ['dNorth', 'dEast', 'dHeight']
     skiprows = [1]
 
-    filenames = glob('*.reformat')
-    # filenames = ['10hz-318.DHU.hanm.LC.reformat', '10hz-318.DHU.kaik.LC.reformat']
+    filenames = glob('*.LC')
     station_info = station_coords()
 
     horiz_anim = kml.newgxtour(name="Play horizontal displacement animation")
     horiz_playlist = horiz_anim.newgxplaylist()
 
     datasets = OrderedDict() # store all dataframes in this dict, station_id:data.
-    hvects = OrderedDict() # store all vector objects to be updated later
+    hvects = OrderedDict() # store all horiz vector objects to be updated later
+    vvects = OrderedDict() # store all vert vector objects to be updated later
 
     for filename in filenames:
         # print filename
@@ -44,12 +45,13 @@ def main():
 
         # get the data for this station name as a Pandas dataframe
         data = read_file(filename, cols, skiprows)
-        data.set_index('sec-past-eq')
+        data = data.reset_index(drop=True)
 
         # normalise the data so we're starting at 0.  Could be smarter and average this over a certain time period...
         # data = data - data.iloc[0]
-        data['n(cm)'][:] = (data['n(cm)'] - data['n(cm)'][0]) * hscale
-        data['e(cm)'][:] = (data['e(cm)'] - data['e(cm)'][0]) * hscale
+        data[cols[0]][:] = (data[cols[0]] - data[cols[0]][0]) * hscale
+        data[cols[1]][:] = (data[cols[1]] - data[cols[1]][0]) * hscale
+        data[cols[2]][:] = (data[cols[2]] - data[cols[2]][0]) * vscale
 
         # # Add a point with a label for the GPS station
         station_lonlat = [float(station_info[station]['lon']), float(station_info[station]['lat']), vector_evel]
@@ -58,20 +60,28 @@ def main():
         station_pt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/paddle/red-stars-lv.png'
 
         # Add a zero length line for horizontal displacement, which will be modified later to make the animation
-        hvect = kml.newlinestring(name='station X')
+        hvect = kml.newlinestring(name=station+'_horizontal_vector')
         hvect.coords = [station_lonlat, station_lonlat]
         hvect.style.linestyle.width = 5
         hvect.style.linestyle.color = simplekml.Color.white
         hvect.altitudemode = simplekml.AltitudeMode.relativetoground
+        hvects[station] = hvect
+
+        # Add a zero length line for vertical displacement, also modified later
+        vvect = kml.newlinestring(name=station+'_vertical_vector')
+        vvect.coords = [station_lonlat, station_lonlat]
+        vvect.style.linestyle.width = 5
+        vvect.style.linestyle.color = simplekml.Color.red
+        vvect.altitudemode = simplekml.AltitudeMode.relativetoground
+        vvects[station] = vvect
 
         # save the dataframe for concatenation later
         datasets[station] = data
-        hvects[station] = hvect
 
     # contact and sort all the data based on time.  Avoids joining and filling gaps.  The data appear to have the same time
     # samples anyway but this handles both cases
     allData = pd.concat(datasets.values(), keys=datasets.keys())
-    allData = allData.swaplevel(0, 1).sort('sec-past-eq')
+    allData = allData.swaplevel(0, 1).sort()
 
     # iterate over all the indicies (with corresponding times), then iterate over station names and add a wait in between each timestep.
     for idx in allData.index.levels[0]:
@@ -82,16 +92,30 @@ def main():
         timestep = allData.loc[idx]
         for station_name, row in timestep.iterrows():
             # coords need to be in lon, lat, elev
-            delta = row.loc[['e(cm)', 'n(cm)', 'u(cm)']]
+            h_delta = row.loc[[cols[1], cols[0], cols[2]]]
 
-            # end point for vector should be at same elev at start.  TODO: handle this differently...
-            delta['u(cm)'] = 0
+            # end point for vector should be at same elev at start.
+            h_delta[cols[2]] = 0
 
-            # station_name = indexes[1]
+            # update the horizontal vector
             station_lonlat = [float(station_info[station_name]['lon']), float(station_info[station_name]['lat']), vector_evel]
-            vect = hvects[station_name]
-            update_str = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            changes.append(update_str.format(vect.id, kmlCoords(station_lonlat), absoluteChange(station_lonlat, delta)))
+            station_kml_coords = kmlCoords(station_lonlat)
+            h_vect = hvects[station_name]
+            h_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
+            changes.append(h_update.format(h_vect.id, station_kml_coords, absoluteChange(station_lonlat, h_delta)))
+
+            # update the vertical vector TODO: if negative make it blue
+            v_vect = vvects[station_name]
+            v_delta = [0, row.loc[cols[2]], 0]
+            v_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
+            changes.append(v_update.format(v_vect.id, station_kml_coords, absoluteChange(station_lonlat, v_delta)))
+
+            if v_delta[1] < 0:
+                colour = 'ffff0000' # blue
+            else:
+                colour = 'ff0000ff' # red
+
+            changes.append('<LineStyle targetId="%s"><color>%s</color></LineStyle>' % (v_vect.style.linestyle.id, colour))
 
         animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
         animatedupdate.update.change = ''.join(changes)
@@ -102,6 +126,7 @@ def main():
     wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
     kml.save("test.kml")
+    # kml.savekmz("test.kmz")
 
 if __name__ == '__main__':
     main()
