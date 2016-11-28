@@ -12,23 +12,25 @@ from displacement import read_file
 from pyproj import Proj
 
 def kmlCoords(coords):
+    """Convert from a sequence of floats to a comma delimited string"""
     return ','.join([str(x) for x in coords])
 
-def addDistanceToCoords(coords, lengths):
-    """Return a comma delimted string of 'lon,lat,elev' with the distances (m) in the lengths argument added to the (lon,lat,elev) coordinates in coords"""
+def distanceVector(coords, lengths):
+    """Return a comma delimted string of 'lon,lat,elev' with the distances (m) in the lengths argument added to the
+    (lon,lat,elev) coordinates in coords"""
+    # would be much faster to operate on all coords at once, as numpy arrays
     p = Proj(proj='utm',zone='59G',ellps='WGS84')
     x,y = p(coords[0], coords[1])
     lon, lat = p(x + lengths[0], y + lengths[1], inverse=True)
-    new_coords = [str(lon), str(lat), str(coords[2])]
 
-    return ','.join(new_coords)
+    return kmlCoords((lon, lat, coords[2]))
 
 def main():
     kml = simplekml.Kml(name='GPS Sensor displacement for Kaikoura Earthquake 14 Nov 2016', open=1)
 
     freq = 1.0 # frequency in Hz to play back.
     samp_rate = 1.0/freq # Google Earth wants duration (sample rate) between measurements
-    hscale = 50.0 # horizontal scaling factor to multiply displacement by
+    hscale = 50.0 # horizontal scaling factor to multiply displacement by (units are in mm so it's actually hscale * 1000)
     vscale = 50.0 # vertical scaling factor to multiply displacement by
     vector_evel = 200
     # cols = ['sec-past-eq', 'dNorth', 'dEast', 'u(cm)']
@@ -109,33 +111,31 @@ def main():
             station_kml_coords = kmlCoords(station_lonlat)
             h_vect = hvects[station_name]
             h_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            changes.append(h_update.format(h_vect.id, station_kml_coords, addDistanceToCoords(station_lonlat, h_delta)))
+            changes.append(h_update.format(h_vect.id, station_kml_coords, distanceVector(station_lonlat, h_delta)))
 
-            # update the vertical vector TODO: if negative make it blue
+            # update the vertical vector
             v_vect = vvects[station_name]
             v_delta = [0, row.loc[cols[2]], 0]
             v_update = '<LineString targetId="{0}"><coordinates>{1} {2}</coordinates></LineString>'
-            changes.append(v_update.format(v_vect.id, station_kml_coords, addDistanceToCoords(station_lonlat, v_delta)))
+            changes.append(v_update.format(v_vect.id, station_kml_coords, distanceVector(station_lonlat, v_delta)))
 
             if v_delta[1] < 0:
-                colour = 'ffff0000' # blue
+                colour = simplekml.Color.blue
             else:
-                colour = 'ff0000ff' # red
+                colour = simplekml.Color.red
 
+            print station_name, h_delta
             changes.append('<LineStyle targetId="%s"><color>%s</color></LineStyle>' % (v_vect.style.linestyle.id, colour))
-
-        # if idx == 3: return
 
         animatedupdate = horiz_playlist.newgxanimatedupdate(gxduration=samp_rate)
         animatedupdate.update.change = ''.join(changes)
 
         wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
-
     wait = horiz_playlist.newgxwait(gxduration=samp_rate)
 
     kml.save("test.kml")
-    # kml.savekmz("test.kmz")
+    kml.savekmz("test.kmz")
 
 if __name__ == '__main__':
     main()
